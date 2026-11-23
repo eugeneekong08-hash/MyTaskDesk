@@ -2,10 +2,26 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime, timedelta
 import sqlite3
-import hashlib  # For password hashing
+import hashlib
 import os
-import winsound  # For Windows beep; use playsound for cross-platform with .wav files
-from tkcalendar import DateEntry
+import winsound
+import importlib
+
+# Try to use tkcalendar if installed, otherwise fall back to normal Entry
+try:
+    tkcalendar = importlib.import_module("tkcalendar")
+    DateEntry = tkcalendar.DateEntry
+except ImportError:
+    class DateEntry(tk.Entry):
+        def __init__(self, master=None, **kwargs):
+            kwargs.pop("date_pattern", None)
+            kwargs.pop("selectbackground", None)
+            if "foreground" in kwargs:
+                kwargs.setdefault("fg", kwargs.pop("foreground"))
+            if "background" in kwargs:
+                kwargs.setdefault("bg", kwargs.pop("background"))
+            super().__init__(master, **kwargs)
+
 
 # Database setup with migration for users and tasks tables
 def init_db():
@@ -50,7 +66,7 @@ def init_db():
         c.execute('''PRAGMA table_info(expenses)''')
         columns = [col[1] for col in c.fetchall()]
         if not columns or 'category' not in columns:  # Recreate if missing category
-            c.execute("DROP TABLE IF EXISTS expenses")  # Warning: This deletes existing expense data
+            c.execute("DROP TABLE IF EXISTS expenses")
             c.execute('''CREATE TABLE expenses 
                          (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT, amount REAL, category TEXT, date TEXT)''')
         conn.commit()
@@ -61,7 +77,8 @@ def init_db():
 
 init_db()
 
-# Load user settings (simplified since sound settings are removed)
+
+# Load user settings
 def get_user_settings(email):
     try:
         conn = sqlite3.connect("mytaskdesk.db")
@@ -69,10 +86,11 @@ def get_user_settings(email):
         c.execute("SELECT password FROM users WHERE email = ?", (email,))
         result = c.fetchone()
         conn.close()
-        return result[0] if result else None  # Return password (hashed) or None
+        return result[0] if result else None
     except sqlite3.Error as e:
         messagebox.showerror("Database Error", f"Failed to fetch user settings: {e}")
         return None
+
 
 # Save user or task
 def save_data(table, data):
@@ -85,6 +103,7 @@ def save_data(table, data):
         messagebox.showerror("Database Error", f"Failed to save data: {e}")
     finally:
         conn.close()
+
 
 # Fetch tasks with sorting option
 def fetch_tasks(username, category_filter="all", status_filter="all", sort_by="due_date_asc"):
@@ -115,6 +134,7 @@ def fetch_tasks(username, category_filter="all", status_filter="all", sort_by="d
         messagebox.showerror("Database Error", f"Failed to fetch tasks: {e}")
         return []
 
+
 # Fetch expenses with totals by category
 def fetch_expenses(username):
     try:
@@ -133,12 +153,14 @@ def fetch_expenses(username):
         messagebox.showerror("Database Error", f"Failed to fetch expenses: {e}")
         return []
 
+
 # Function to switch between frames
 def show_frame(frame):
     for child in root.winfo_children():
         if isinstance(child, tk.Frame):
             child.pack_forget()
     frame.pack(fill="both", expand=True)
+
 
 # Root window setup
 root = tk.Tk()
@@ -200,7 +222,8 @@ def convert_to_12_hour(time_str):
     except ValueError:
         return 12, 0, "AM"
 
-# Schedule and manage reminders (simplified without sound settings)
+
+# Schedule and manage reminders
 def schedule_reminder(task_id, title, due_date, due_time):
     try:
         due_datetime = datetime.strptime(f"{due_date} {due_time}", "%Y-%m-%d %H:%M")
@@ -215,7 +238,7 @@ def show_reminder(task_id, title, due_datetime):
     now = datetime.now()
     if now >= due_datetime:
         messagebox.showinfo("Reminder", f"Task '{title}' is due now!\n[Press Snooze or OK]", parent=root)
-        winsound.Beep(1000, 500)  # Default beep sound
+        winsound.Beep(1000, 500)
         snooze_window = tk.Toplevel(root)
         snooze_window.title("Snooze")
         snooze_window.geometry("200x100")
@@ -232,7 +255,6 @@ def snooze_reminder(task_id, title, due_datetime, window):
     snooze_time = due_datetime + timedelta(minutes=5)
     schedule_reminder(task_id, title, snooze_time.strftime("%Y-%m-%d"), snooze_time.strftime("%H:%M"))
 
-# Load and schedule reminders
 def load_reminders():
     try:
         conn = sqlite3.connect("mytaskdesk.db")
@@ -245,7 +267,8 @@ def load_reminders():
     except sqlite3.Error as e:
         messagebox.showerror("Database Error", f"Failed to load reminders: {e}")
 
-# Login/Signup Page with Demo
+
+# ==================== LOGIN / SIGNUP PAGE ====================
 login_frame = tk.Frame(root, bg=bg_color)
 login_frame.pack(fill="both", expand=True)
 
@@ -285,9 +308,9 @@ def login():
         return
     stored_password = get_user_settings(email)
     if stored_password and hashlib.sha256(password.encode()).hexdigest() == stored_password:
-        current_user.set(email.split('@')[0])  # Use email prefix as username for tasks
+        current_user.set(email.split('@')[0])
         load_reminders()
-        update_task_list()  # Update task list immediately after login
+        update_task_list()
         show_frame(profile_frame)
     else:
         messagebox.showerror("Login Failed", "Invalid email or password.")
@@ -323,7 +346,8 @@ tk.Button(btn_auth_frame, text="Login", width=15, bg=accent_color, fg="white", f
 tk.Button(btn_auth_frame, text="Sign Up", width=15, bg=accent_color, fg="white", font=("Consolas", 10, "bold"), command=signup, relief="flat", bd=0).pack(side="left", padx=10)
 tk.Button(btn_auth_frame, text="Try Demo", width=15, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=show_demo, relief="flat", bd=0).pack(side="left", padx=10)
 
-# Profile Page
+
+# ==================== PROFILE PAGE ====================
 profile_frame = tk.Frame(root, bg=bg_color)
 current_user = tk.StringVar()
 
@@ -338,7 +362,8 @@ tk.Button(profile_inner_frame, text="Go to Task List", width=20, bg=accent_color
 tk.Button(profile_inner_frame, text="Go to Expenses", width=20, bg=accent_color, fg="white", font=("Consolas", 10, "bold"), command=lambda: show_frame(expense_frame), relief="flat", bd=0).pack(pady=10)
 tk.Button(profile_inner_frame, text="Logout", width=20, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=lambda: show_frame(login_frame), relief="flat", bd=0).pack(pady=10)
 
-# Add Task Page
+
+# ==================== ADD TASK PAGE ====================
 add_task_frame = tk.Frame(root, bg=bg_color)
 
 title_var = tk.StringVar()
@@ -472,7 +497,8 @@ tk.Button(btn_frame, text="Add Task", width=15, bg=accent_color, fg="white", fon
 tk.Button(btn_frame, text="Cancel", width=15, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=cancel_task, relief="flat", bd=0).pack(side="left", padx=10)
 tk.Button(btn_frame, text="Back to Profile", width=15, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=lambda: show_frame(profile_frame), relief="flat", bd=0).pack(side="left", padx=10)
 
-# Edit Task Page
+
+# ==================== EDIT TASK PAGE ====================
 edit_task_frame = tk.Frame(root, bg=bg_color)
 edit_task_id = tk.IntVar()
 
@@ -536,7 +562,8 @@ btn_edit_frame.grid(row=9, column=0, columnspan=2, pady=20)
 tk.Button(btn_edit_frame, text="Save Changes", width=15, bg=accent_color, fg="white", font=("Consolas", 10, "bold"), command=save_edited_task, relief="flat", bd=0).pack(side="left", padx=10)
 tk.Button(btn_edit_frame, text="Cancel", width=15, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=lambda: show_frame(task_list_frame), relief="flat", bd=0).pack(side="left", padx=10)
 
-# Task List Page
+
+# ==================== TASK LIST PAGE ====================
 task_list_frame = tk.Frame(root, bg=bg_color)
 
 task_list = tk.Listbox(task_list_frame, width=80, height=15, font=entry_font, bg="#1a1a1a", fg=fg_color)
@@ -594,7 +621,8 @@ tk.Button(task_list_frame, text="Delete", width=10, bg="#1a1a1a", fg="white", fo
 tk.Button(task_list_frame, text="Mark Complete", width=10, bg=accent_color, fg="white", font=("Consolas", 10, "bold"), command=mark_complete_wrapper, relief="flat", bd=0).grid(row=7, column=2, pady=5)
 tk.Button(task_list_frame, text="Back to Profile", width=15, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=lambda: show_frame(profile_frame), relief="flat", bd=0).grid(row=8, column=1, pady=10)
 
-# Demo Page
+
+# ==================== DEMO PAGE ====================
 demo_frame = tk.Frame(root, bg=bg_color)
 
 demo_list = tk.Listbox(demo_frame, width=80, height=15, font=entry_font, bg="#1a1a1a", fg=fg_color)
@@ -615,7 +643,8 @@ tk.Button(demo_frame, text="Back to Login", width=15, bg="#1a1a1a", fg="white", 
 
 show_demo_tasks()
 
-# Expense Tracking Page
+
+# ==================== EXPENSE TRACKING PAGE ====================
 expense_frame = tk.Frame(root, bg=bg_color)
 amount_var = tk.StringVar()
 expense_category_var = tk.StringVar(value="General")
@@ -690,6 +719,7 @@ tk.Button(btn_exp_frame, text="Apply Date Filter", width=15, bg=accent_color, fg
 tk.Button(btn_exp_frame, text="Back to Profile", width=15, bg="#1a1a1a", fg="white", font=("Consolas", 10, "bold"), command=lambda: show_frame(profile_frame), relief="flat", bd=0).pack(side="left", padx=10)
 expense_list.grid(row=7, column=0, columnspan=2, pady=10)
 update_expense_list()
+
 
 # Start with the login frame
 show_frame(login_frame)
